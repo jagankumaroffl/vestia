@@ -1,0 +1,57 @@
+version: "3.9"
+
+# Vestia — full-stack deployment
+#
+#   docker compose up --build
+#
+# Backend  → http://localhost:8000  (FastAPI, docs at /docs)
+# Frontend → http://localhost:3000  (Next.js)
+#
+# Persistent data (SQLite DB, uploaded images, FAISS indexes) lives in
+# named volumes so it survives container rebuilds.
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vestia-backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:///./data/db/vestia.db
+      UPLOAD_DIR: data/uploads
+      FAISS_INDEX_DIR: data/faiss_index
+      ALLOWED_ORIGINS: '["http://localhost:3000"]'
+    volumes:
+      - vestia-db:/app/data/db
+      - vestia-uploads:/app/data/uploads
+      - vestia-faiss:/app/data/faiss_index
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vestia-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      # Server-side rewrites in next.config.mjs proxy /api and /uploads to
+      # the backend service name on the Docker network.
+      NEXT_PUBLIC_API_BASE_URL: /api/v1
+      NEXT_PUBLIC_UPLOADS_BASE_URL: /uploads
+      BACKEND_INTERNAL_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  vestia-db:
+  vestia-uploads:
+  vestia-faiss:

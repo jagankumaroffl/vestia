@@ -1,0 +1,185 @@
+VESTIA - SETUP GUIDE
+====================
+
+This guide covers two ways to run Vestia: Docker (fastest) and manual
+local setup (for development).
+
+
+OPTION A - DOCKER (RECOMMENDED)
+--------------------------------
+
+Requirements: Docker and Docker Compose installed.
+
+1. Unzip the project and open a terminal in the vestia folder.
+
+2. Run:
+   docker compose up --build
+
+3. Wait for both services to start. The backend has a healthcheck, so
+   the frontend will wait for it automatically.
+
+4. Open in your browser:
+   Frontend:        http://localhost:3000
+   Backend docs:    http://localhost:8000/docs
+   Backend health:  http://localhost:8000/health
+
+5. To seed sample wardrobe data (30 items, 7 days of history):
+   docker compose exec backend python -m app.database.seed
+
+6. To stop:
+   docker compose down
+
+   To stop and delete all data (database, uploads, FAISS index):
+   docker compose down -v
+
+
+OPTION B - MANUAL LOCAL SETUP
+-------------------------------
+
+Requirements: Python 3.11+, Node.js 20+.
+
+STEP 1 - BACKEND
+
+1. Open a terminal and go to the backend folder:
+   cd vestia/backend
+
+2. Create and activate a virtual environment:
+   python -m venv .venv
+   source .venv/bin/activate
+   (on Windows: .venv\Scripts\activate)
+
+3. Install Python dependencies:
+   pip install -r requirements.txt
+
+   Note: if pip complains about "externally managed environment", add
+   --break-system-packages to the pip install command.
+
+4. Copy the environment file:
+   cp .env.example .env
+
+   The defaults work for local development. No changes needed unless
+   you want to use PostgreSQL instead of SQLite.
+
+5. Create the database and seed lookup tables:
+   alembic upgrade head
+
+6. (Optional) Seed sample wardrobe data for a populated demo:
+   python -m app.database.seed
+
+7. Start the backend server:
+   uvicorn app.main:app --reload --port 8000
+
+8. Verify it's running by opening:
+   http://localhost:8000/health
+   You should see: {"status":"ok","service":"Vestia","version":"1.0.0"}
+
+   Interactive API docs:
+   http://localhost:8000/docs
+
+
+STEP 2 - FRONTEND
+
+1. Open a SECOND terminal (keep the backend running in the first one).
+   Go to the frontend folder:
+   cd vestia/frontend
+
+2. Install Node dependencies:
+   npm install
+
+3. Copy the environment file:
+   cp .env.local.example .env.local
+
+   Defaults work for local development - the frontend automatically
+   proxies API and image requests to the backend on port 8000.
+
+4. Start the frontend dev server:
+   npm run dev
+
+5. Open in your browser:
+   http://localhost:3000
+
+   It will redirect to the Dashboard page.
+
+
+WHAT YOU CAN DO IN THE APP
+-----------------------------
+
+Dashboard   - overview of wardrobe stats and today's outfit pick
+Wardrobe    - browse, filter, search, edit, and delete clothing items
+Upload      - upload a photo of one garment; the app detects category,
+              color, pattern, style, and season automatically
+Outfit Generator - pick an occasion and season, get scored outfit
+              suggestions from your wardrobe
+Weekly Planner - generate a full Monday-Sunday outfit plan with no
+              repeated tops or bottoms on consecutive days
+
+
+NOTES ON THE AI / COMPUTER VISION PIPELINE
+---------------------------------------------
+
+The first time you upload an image, the backend will try to download
+the FashionCLIP model (about 600 MB) automatically. This requires
+internet access and the "torch" and "transformers" Python packages
+(already in requirements.txt). No GPU is needed - it runs on CPU,
+just a bit slower (a few seconds per image).
+
+If torch/transformers are not installed, or the download fails, the
+backend automatically falls back to a built-in "stub" mode. In stub
+mode, uploads still work and return valid (but randomized) metadata,
+so you can test the whole app without the ML dependencies. Stub
+uploads are marked "needs review" so you can correct them manually.
+
+
+RUNNING TESTS (BACKEND)
+---------------------------
+
+cd vestia/backend
+python -m pytest tests/ -v
+
+This runs 174 tests covering the rules engine, database repositories,
+and full API endpoints.
+
+
+TROUBLESHOOTING
+-------------------
+
+Problem: "RuntimeError: Directory 'data/uploads' does not exist"
+Fix: Make sure you're running uvicorn from inside the backend folder.
+     If needed, create the folders manually:
+     mkdir -p data/db data/uploads data/faiss_index
+
+Problem: pip install fails on opencv-python-headless
+Fix: Install system libraries first (Linux):
+     sudo apt-get install libgl1-mesa-glx libglib2.0-0
+
+Problem: Frontend loads but shows no clothing images
+Fix: Confirm the backend is running on port 8000. The frontend gets
+     images through the backend.
+
+Problem: "faiss-cpu not installed" warning in the logs
+Fix: This is harmless. It just means the "similar items" and "wardrobe
+     clusters" features will return empty results.
+
+Problem: Want to start over with a clean database
+Fix (manual setup):
+     rm -f data/db/vestia.db
+     alembic upgrade head
+     python -m app.database.seed --clear
+
+Fix (Docker):
+     docker compose down -v
+     docker compose up --build
+
+
+PROJECT DOCUMENTATION
+-------------------------
+
+More detailed docs are in the "docs" folder:
+
+docs/ARCHITECTURE.md     - how everything fits together, diagrams
+docs/DATA_FLOW.md         - upload pipeline and weekly planning logic
+docs/DATABASE_SCHEMA.md   - database tables and relationships
+docs/API.md               - full API reference with examples
+docs/SETUP.md             - same setup info, in markdown
+docs/DEVELOPMENT.md       - dev workflow, migrations, testing
+docs/DEPLOYMENT.md        - Docker deployment details
